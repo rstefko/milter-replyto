@@ -7,17 +7,15 @@ import (
 	"net"
 	"net/textproto"
 	"os"
-	"regexp"
 
 	"github.com/andybalholm/milter"
 )
-
-var fromRegex = regexp.MustCompile("@([^@]+\\.lan|livid\\.pp\\.ru)$")
 
 /* replyMilter object */
 type replyMilter struct {
 	milter.Milter
 	hasReplyToHeader *bool
+	fromHeader *string
 }
 
 // Connect is called when a new SMTP connection is received. The values for
@@ -41,28 +39,25 @@ func (b replyMilter) To(recipient string, macros map[string]string) milter.Respo
 // From is called when the client sends its MAIL FROM message. The sender's
 // address is passed without <> brackets.
 func (b replyMilter) From(from string, macros map[string]string) milter.Response {
-	if !fromRegex.MatchString(from) {
-		log.Println("From ", from, " SKIP")
-		return milter.Accept
-	}
-	log.Println("From ", from, " OK")
 	return milter.Continue
 }
 
 // Headers is called when the message headers have been received.
 func (b replyMilter) Headers(headers textproto.MIMEHeader) milter.Response {
+	var from = headers.Get("From")
+	*b.fromHeader = from;
 	var rt = headers.Get("Reply-To")
 	*b.hasReplyToHeader = (rt != "")
-	log.Println("Reply-To header: ", *b.hasReplyToHeader, rt)
+	log.Println("Found Reply-To header:", *b.hasReplyToHeader, rt)
 	return milter.Continue
 }
 
 // Body is called when the message body has been received. It gives an
 // opportunity for the milter to modify the message before it is delivered.
 func (b replyMilter) Body(body []byte, m milter.Modifier) milter.Response {
-	if !*b.hasReplyToHeader {
-		log.Println("Added Reply-To header")
-		m.AddHeader("Reply-To", "root@livid.pp.ru")
+	if !*b.hasReplyToHeader && b.fromHeader != nil {
+		log.Println("Adding Reply-To header:", *b.fromHeader)
+		m.AddHeader("Reply-To", *b.fromHeader)
 	}
 	return milter.Accept
 }
@@ -71,7 +66,7 @@ func (b replyMilter) Body(body []byte, m milter.Modifier) milter.Response {
 func runServer(socket net.Listener) {
 	// declare milter init function
 	init := func() milter.Milter {
-		return replyMilter{hasReplyToHeader: new(bool)}
+		return replyMilter{hasReplyToHeader: new(bool), fromHeader: new(string)}
 	}
 	// start server
 	if err := milter.Serve(socket, init); err != nil {
