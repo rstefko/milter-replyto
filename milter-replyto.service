@@ -3,11 +3,11 @@ Description=A milter service to add reply-to header
 After=network.target nss-lookup.target syslog.target
 
 [Service]
-ExecStart=/usr/local/bin/milter-replyto
+ExecStart=/usr/local/bin/milter-replyto -addr=/var/spool/postfix/milter-replyto/milter-replyto.sock
 RuntimeDirectory=milter-replyto
 RuntimeDirectoryMode=0750
 User=milter
-Group=milter
+Group=postfix
 KillMode=process
 Restart=on-failure
 
